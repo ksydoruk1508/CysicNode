@@ -40,6 +40,7 @@ ________________________________________________________________________________
  ██  ██████  ██      ██   ██ ██   ████ ██████  ██   ██ ██   ████    ██    ███████
 
 Donate: 0x0004230c13c3890F34Bb9C9683b91f539E809000
+${PURPLE}Все текстовые гайды - https://teletype.in/@c6zr7${NC}
 EOF
 echo -e "${NC}"
 
@@ -136,9 +137,7 @@ function main_menu {
         echo -e "${CYAN}4. Удаление ноды${NC}"
         echo -e "${CYAN}5. Перейти к другим нодам${NC}"
         echo -e "${CYAN}6. Выход${NC}"
-        echo -e " "
-        echo -e "${PURPLE}Все текстовые гайды - https://teletype.in/@c6zr7${NC}"
-        
+                  
         echo -e "${YELLOW}Введите номер действия:${NC} "
         read choice
         case $choice in
