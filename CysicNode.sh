@@ -47,7 +47,7 @@ function install_node {
     echo -e "${BLUE}Обновляем систему и устанавливаем необходимые пакеты...${NC}"
     sudo apt-get update -y && sudo apt-get upgrade -y && sudo apt-get install make screen build-essential unzip lz4 gcc git jq -y
 
-    echo -e "${YELLOW}Введите адрес вашего EVM-кошелька (как указано на сайте): ${NC}"
+    echo -e "${YELLOW}Введите адрес привязного вами EVM кошелька на сайте: ${NC}"
     read EVM_WALLET
 
     if [ -z "$EVM_WALLET" ]; then
@@ -136,7 +136,9 @@ function main_menu {
         echo -e "${CYAN}4. Удаление ноды${NC}"
         echo -e "${CYAN}5. Перейти к другим нодам${NC}"
         echo -e "${CYAN}6. Выход${NC}"
-
+        echo -e " "
+        echo -e "${PURPLE}Все текстовые гайды - https://teletype.in/@c6zr7${NC}"
+        
         echo -e "${YELLOW}Введите номер действия:${NC} "
         read choice
         case $choice in
