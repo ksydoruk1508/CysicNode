@@ -95,6 +95,12 @@ function restart_node {
     echo -e "${GREEN}Нода перезапущена.${NC}"
 }
 
+function stop_node {
+    echo -e "${BLUE}Останавливаем ноду Cysic...${NC}"
+    sudo systemctl stop cysic
+    echo -e "${GREEN}Нода остановлена.${NC}"
+}
+
 function view_logs {
     echo -e "${YELLOW}Просмотр логов (выход CTRL+C):${NC}"
     sudo journalctl -u cysic -f --no-hostname -o cat
@@ -136,7 +142,8 @@ function main_menu {
         echo -e "${CYAN}3. Просмотр логов${NC}"
         echo -e "${CYAN}4. Удаление ноды${NC}"
         echo -e "${CYAN}5. Перейти к другим нодам${NC}"
-        echo -e "${CYAN}6. Выход${NC}"
+        echo -e "${CYAN}6. Остановить ноду${NC}"
+        echo -e "${CYAN}7. Выход${NC}"
         echo -e " "
         echo -e "${PURPLE}Все текстовые гайды - https://teletype.in/@c6zr7${NC}"
                   
@@ -148,7 +155,8 @@ function main_menu {
             3) view_logs ;;
             4) remove_node ;;
             5) other_nodes ;;
-            6) break ;;
+            6) stop_node ;;
+            7) break ;;
             *) echo -e "${RED}Неверный выбор, попробуйте снова.${NC}" ;;
         esac
     done
