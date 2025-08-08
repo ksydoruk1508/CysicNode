@@ -20,16 +20,41 @@ function ensure_base_packages {
       python3 python3-pip whiptail figlet curl
 }
 
-# Try to install gum (nice TUI for arrow menus)
+# ===== Try to install gum (arrow-key TUI) =====
 function ensure_gum {
   if command -v gum >/dev/null 2>&1; then return 0; fi
   echo -e "${BLUE}Installing gum (for arrow-key menu)...${NC}"
-  # Статичная версия (amd64). При другой архитектуре — ставь вручную.
   GUM_VER="0.14.1"
-  TMP_DEB="/tmp/gum_${GUM_VER}_linux_amd64.deb"
-  curl -L --fail -o "$TMP_DEB" "https://github.com/charmbracelet/gum/releases/download/v${GUM_VER}/gum_${GUM_VER}_Linux_x86_64.deb" \
-    && sudo dpkg -i "$TMP_DEB" >/dev/null 2>&1 || true
-  rm -f "$TMP_DEB" || true
+
+  # Detect arch
+  ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+  case "$ARCH" in
+    amd64|x86_64)  DEB_ARCH="x86_64";  TAR_ARCH="x86_64";;
+    arm64|aarch64) DEB_ARCH="arm64";   TAR_ARCH="arm64";;
+    armhf|arm)     DEB_ARCH="armv7";   TAR_ARCH="armv7";;
+    *)             DEB_ARCH="x86_64";  TAR_ARCH="x86_64";;
+  esac
+
+  TMP_DIR="$(mktemp -d)"
+  DEB="$TMP_DIR/gum_${GUM_VER}_Linux_${DEB_ARCH}.deb"
+  TAR="$TMP_DIR/gum_${GUM_VER}_Linux_${TAR_ARCH}.tar.gz"
+
+  # Try deb first
+  if curl -fsSL -o "$DEB" "https://github.com/charmbracelet/gum/releases/download/v${GUM_VER}/gum_${GUM_VER}_Linux_${DEB_ARCH}.deb"; then
+    sudo dpkg -i "$DEB" >/dev/null 2>&1 || true
+  fi
+
+  # Fallback to tar.gz if gum still not available
+  if ! command -v gum >/dev/null 2>&1; then
+    if curl -fsSL -o "$TAR" "https://github.com/charmbracelet/gum/releases/download/v${GUM_VER}/gum_${GUM_VER}_Linux_${TAR_ARCH}.tar.gz"; then
+      tar -xzf "$TAR" -C "$TMP_DIR" >/dev/null 2>&1 || true
+      if [ -f "$TMP_DIR/gum" ]; then
+        sudo install -m 0755 "$TMP_DIR/gum" /usr/local/bin/gum || true
+      fi
+    fi
+  fi
+
+  rm -rf "$TMP_DIR" || true
 }
 
 function ensure_python_libs {
@@ -43,7 +68,7 @@ function show_banner {
   clear
   if command -v figlet >/dev/null 2>&1; then
     echo -e "${CYAN}"
-    figlet -f "ANSI Shadow" -w 120 "CYSIC VERIFIER" || figlet -w 120 "CYSIC VERIFIER"
+    figlet -w 120 "CYSIC VERIFIER" || figlet "CYSIC VERIFIER"
     echo -e "${NC}"
   else
     echo -e "${CYAN}CYSIC VERIFIER${NC}"
@@ -52,11 +77,7 @@ function show_banner {
   echo
 }
 
-# ===== Helpers =====
-function has_whiptail { command -v whiptail >/dev/null 2>&1; }
-function has_gum      { command -v gum >/dev/null 2>&1; }
-
-# ===== Node install =====
+# ===== Node: install =====
 function install_node {
   ensure_base_packages
   echo -e "${YELLOW}Введите адрес привязанного EVM-кошелька / Enter your linked EVM address:${NC}"
@@ -96,7 +117,7 @@ EOF
   echo -e "${YELLOW}Logs:${NC} ${CYAN}sudo journalctl -u cysic -f --no-hostname -o cat${NC}"
 }
 
-# ===== Node update =====
+# ===== Node: update =====
 function update_node {
   if [ -f "$EVM_FILE" ]; then EVM_WALLET=$(cat "$EVM_FILE"); else
     echo -e "${YELLOW}Введите адрес EVM-кошелька / Enter EVM address:${NC}"
@@ -113,7 +134,7 @@ function update_node {
   echo -e "${GREEN}Node restarted.${NC}"
 }
 
-# ===== Node control =====
+# ===== Node: control =====
 function restart_node { echo -e "${BLUE}Restarting node...${NC}"; sudo systemctl restart cysic; echo -e "${GREEN}Done.${NC}"; }
 function stop_node    { echo -e "${BLUE}Stopping node...${NC}";  sudo systemctl stop cysic;     echo -e "${GREEN}Done.${NC}"; }
 function view_logs    { echo -e "${YELLOW}Follow logs (CTRL+C to exit):${NC}"; sudo journalctl -u cysic -f --no-hostname -o cat; }
@@ -140,7 +161,7 @@ function other_nodes {
     && sudo chmod +x Ultimative_Node_Installer.sh && ./Ultimative_Node_Installer.sh
 }
 
-# ===== Claimer Python =====
+# ===== Claimer Python writer =====
 function write_claimer_py {
 sudo tee "$CLAIMER_PY" >/dev/null <<'PYEOF'
 import argparse, requests, time, random, sys
@@ -217,6 +238,7 @@ class CysicClaimer:
                 print(f"[{now()}] ✅ OK"); return True
             if code == 10199:
                 print(f"[{now()}] ❌ Authorization required"); return False
+            print(f"[{now()}] ℹ️  Other code: {data}")
             return True
         except Exception as e:
             print(f"[{now()}] Claim error: {e}")
@@ -261,7 +283,9 @@ function start_claimer {
   ensure_base_packages; ensure_python_libs; write_claimer_py
   echo -e "${YELLOW}Введите приватный ключ вашего кошелька Cysic:${NC}"; read -r PRIVATE_KEY
   echo -e "${YELLOW}Введите invite code от Cysic:${NC}"; read -r INVITE_CODE
-  [ -z "$PRIVATE_KEY" ] || [ -z "$INVITE_CODE" ] && { echo -e "${RED}Both are required.${NC}"; return; }
+  if [ -z "$PRIVATE_KEY" ] || [ -z "$INVITE_CODE" ]; then
+    echo -e "${RED}Private key and invite code are required.${NC}"; return
+  fi
   sudo touch "$CLAIMER_LOG"; sudo chmod 644 "$CLAIMER_LOG"
 
   if command -v screen >/dev/null 2>&1; then
@@ -269,6 +293,7 @@ function start_claimer {
     screen -S cysic-claimer -dm bash -lc "python3 '$CLAIMER_PY' --pk '$PRIVATE_KEY' --invite '$INVITE_CODE' >> '$CLAIMER_LOG' 2>&1"
     sudo rm -f "$CLAIMER_PID" 2>/dev/null || true
     echo -e "${GREEN}Claimer started in screen (logs: $CLAIMER_LOG).${NC}"
+    echo -e "${YELLOW}Attach: screen -r cysic-claimer  (detach: Ctrl+A, D)${NC}"
   else
     nohup python3 "$CLAIMER_PY" --pk "$PRIVATE_KEY" --invite "$INVITE_CODE" >> "$CLAIMER_LOG" 2>&1 &
     echo $! | sudo tee "$CLAIMER_PID" >/dev/null
@@ -302,10 +327,14 @@ function stop_claimer {
 
 # ===== Menus =====
 function menu_gum {
-  ensure_gum
   show_banner
-  echo "⚡ What do you want to do? (Use arrow keys)"
-  echo
+  export GUM_CHOOSE_HEADER="⚡ What do you want to do? (Use arrow keys)"
+  export GUM_CHOOSE_CURSOR="›"
+  export GUM_CHOOSE_CURSOR_PREFIX=" "
+  export GUM_CHOOSE_SELECTED_PREFIX="✔ "
+  export GUM_CHOOSE_UNSELECTED_PREFIX="  "
+  export GUM_CHOOSE_HEIGHT=12
+
   CHOICE=$(gum choose \
     "👉  Install Cysic node / Установка ноды" \
     "🔁  Restart node / Рестарт ноды" \
@@ -340,25 +369,27 @@ function menu_whiptail {
 
 function main_menu {
   ensure_base_packages
+  ensure_gum   # важно: ставим gum перед проверкой
+
   while true; do
     local choice
-    if has_gum; then
+    if command -v gum >/dev/null 2>&1; then
       choice=$(menu_gum)
       case "$choice" in
-        *"Install Cysic node"*) install_node ;;
-        *"Restart node"*)       restart_node ;;
-        *"Update node"*)        update_node ;;
-        *"View node logs"*)     view_logs ;;
-        *"Remove node"*)        remove_node ;;
-        *"Other nodes"*)        other_nodes ;;
-        *"Stop node"*)          stop_node ;;
-        *"Start test-token claimer"*) start_claimer ;;
-        *"View claimer logs"*)  claimer_logs ;;
-        *"Stop claimer"*)       stop_claimer ;;
-        *"Exit"*)               break ;;
+        *"Install Cysic node"*)          install_node ;;
+        *"Restart node"*)                restart_node ;;
+        *"Update node"*)                 update_node ;;
+        *"View node logs"*)              view_logs ;;
+        *"Remove node"*)                 remove_node ;;
+        *"Other nodes"*)                 other_nodes ;;
+        *"Stop node"*)                   stop_node ;;
+        *"Start test-token claimer"*)    start_claimer ;;
+        *"View claimer logs"*)           claimer_logs ;;
+        *"Stop claimer"*)                stop_claimer ;;
+        *"Exit"*)                        break ;;
         *) ;;
       esac
-    elif has_whiptail; then
+    elif command -v whiptail >/dev/null 2>&1; then
       show_banner
       choice=$(menu_whiptail)
       case "$choice" in
