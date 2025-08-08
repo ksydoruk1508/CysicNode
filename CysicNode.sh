@@ -3,7 +3,6 @@
 # ===== Colors =====
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; BLUE='\033[0;34m'
 PURPLE='\033[0;35m'; CYAN='\033[0;36m'; NC='\033[0m'
-
 set -Eeuo pipefail
 
 # ===== Paths =====
@@ -12,15 +11,15 @@ CLAIMER_PY="/root/cysic_claimer.py"
 CLAIMER_LOG="/var/log/cysic_claimer.log"
 CLAIMER_PID="/var/run/cysic_claimer.pid"
 
-# ===== Ensure base deps =====
+# ===== Base deps (без whiptail) =====
 function ensure_base_packages {
   echo -e "${BLUE}Installing dependencies...${NC}"
   sudo apt-get update -y && sudo apt-get upgrade -y
   sudo apt-get install -y make screen build-essential unzip lz4 gcc git jq \
-      python3 python3-pip whiptail figlet curl
+      python3 python3-pip figlet curl
 }
 
-# ===== Try to install gum (arrow-key TUI) =====
+# ===== Install gum (TUI arrows) =====
 function ensure_gum {
   if command -v gum >/dev/null 2>&1; then return 0; fi
   echo -e "${BLUE}Installing gum (for arrow-key menu)...${NC}"
@@ -39,18 +38,16 @@ function ensure_gum {
   DEB="$TMP_DIR/gum_${GUM_VER}_Linux_${DEB_ARCH}.deb"
   TAR="$TMP_DIR/gum_${GUM_VER}_Linux_${TAR_ARCH}.tar.gz"
 
-  # Try deb first
+  # Try .deb
   if curl -fsSL -o "$DEB" "https://github.com/charmbracelet/gum/releases/download/v${GUM_VER}/gum_${GUM_VER}_Linux_${DEB_ARCH}.deb"; then
     sudo dpkg -i "$DEB" >/dev/null 2>&1 || true
   fi
 
-  # Fallback to tar.gz if gum still not available
+  # Fallback tar.gz
   if ! command -v gum >/dev/null 2>&1; then
     if curl -fsSL -o "$TAR" "https://github.com/charmbracelet/gum/releases/download/v${GUM_VER}/gum_${GUM_VER}_Linux_${TAR_ARCH}.tar.gz"; then
       tar -xzf "$TAR" -C "$TMP_DIR" >/dev/null 2>&1 || true
-      if [ -f "$TMP_DIR/gum" ]; then
-        sudo install -m 0755 "$TMP_DIR/gum" /usr/local/bin/gum || true
-      fi
+      [ -f "$TMP_DIR/gum" ] && sudo install -m 0755 "$TMP_DIR/gum" /usr/local/bin/gum || true
     fi
   fi
 
@@ -161,7 +158,7 @@ function other_nodes {
     && sudo chmod +x Ultimative_Node_Installer.sh && ./Ultimative_Node_Installer.sh
 }
 
-# ===== Claimer Python writer =====
+# ===== Claimer Python =====
 function write_claimer_py {
 sudo tee "$CLAIMER_PY" >/dev/null <<'PYEOF'
 import argparse, requests, time, random, sys
@@ -183,233 +180,5 @@ def validate_private_key(pk: str) -> bool:
 class CysicClaimer:
     def __init__(self, private_key: str, invite_code: str):
         self.private_key = private_key.strip()
-        self.invite_code = invite_code.strip()
-        self.w3 = Web3()
-        try:
-            self.account = self.w3.eth.account.from_key(self.private_key)
-            self.wallet_address = self.account.address
-        except Exception as e:
-            raise ValueError(f"Invalid private key: {e}")
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Content-Type': 'application/json',
-            'Origin': 'https://app.cysic.xyz',
-            'Referer': 'https://app.cysic.xyz/',
-        })
+              
 
-    def sign_message(self, message: str) -> str:
-        msg = encode_defunct(text=message)
-        signed = self.account.sign_message(msg)
-        return signed.signature.hex()
-
-    def bind_invite_code(self) -> bool:
-        try:
-            url = f"{BASE_URL}/api/v1/user/updateProfile"
-            message = f"Welcome to Cysic! Invite Code: {self.invite_code}"
-            headers = {
-                "Content-Type": "application/json",
-                "X-Cysic-Address": self.wallet_address,
-                "X-Cysic-Sign": self.sign_message(message)
-            }
-            r = self.session.post(url, headers=headers, json={"inviteCode": self.invite_code})
-            print(f"[{now()}] Bind invite code status: {r.status_code}")
-            if r.status_code == 200:
-                print(f"[{now()}] Response: {r.json()}")
-                return True
-            print(f"[{now()}] Error: {r.text}")
-            return False
-        except Exception as e:
-            print(f"[{now()}] Invite code bind error: {e}")
-            return False
-
-    def claim_tokens(self) -> bool:
-        try:
-            headers = {"X-Cysic-Address": self.wallet_address, "X-Cysic-Sign": self.sign_message("Welcome to Cysic!")}
-            r = self.session.get(f"{BASE_URL}/api/v1/user/faucet", headers=headers)
-            print(f"[{now()}] Claim status: {r.status_code}")
-            try:
-                data = r.json(); print(f"[{now()}] Response: {data}"); code = data.get("code")
-            except Exception:
-                print(f"[{now()}] Non-JSON response: {r.text}"); code = None
-            if code in (0, 10099):  # success or already/time-limited
-                print(f"[{now()}] ✅ OK"); return True
-            if code == 10199:
-                print(f"[{now()}] ❌ Authorization required"); return False
-            print(f"[{now()}] ℹ️  Other code: {data}")
-            return True
-        except Exception as e:
-            print(f"[{now()}] Claim error: {e}")
-            return False
-
-    def run_cycle(self) -> bool:
-        print("="*70); print(f"[{now()}] Start cycle for wallet: {self.wallet_address}"); print("-"*70)
-        print(f"[{now()}] Binding invite code: {self.invite_code}")
-        if not self.bind_invite_code(): print(f"[{now()}] ❌ Bind failed"); return False
-        print(f"[{now()}] ✅ Invite bound")
-        print(f"[{now()}] Claiming test tokens...")
-        ok = self.claim_tokens()
-        print(f"[{now()}] {'✅ Success' if ok else '❌ Failed'}")
-        return ok
-
-def main():
-    p = argparse.ArgumentParser(description="Cysic test token claimer (0.1/24h)")
-    p.add_argument("--pk", required=True, help="Private key")
-    p.add_argument("--invite", required=True, help="Invite code")
-    a = p.parse_args()
-    if not validate_private_key(a.pk): print("Invalid private key format"); sys.exit(1)
-    c = CysicClaimer(a.pk, a.invite)
-    while True:
-        try:
-            c.run_cycle()
-            m = random.randint(1441, 1445); s = m*60
-            print(f"\n⏰ Next cycle in {m} minutes ({s} seconds)")
-            print(f"[{now()}] Next at: {datetime.fromtimestamp(time.time()+s).strftime('%Y-%m-%d %H:%M:%S')}")
-            print("="*70)
-            time.sleep(s)
-        except KeyboardInterrupt:
-            print(f"\n[{now()}] Interrupted"); break
-        except Exception as e:
-            print(f"[{now()}] Unhandled: {e}"); time.sleep(30)
-
-if __name__ == "__main__": main()
-PYEOF
-}
-
-# ===== Claimer control =====
-function start_claimer {
-  ensure_base_packages; ensure_python_libs; write_claimer_py
-  echo -e "${YELLOW}Введите приватный ключ вашего кошелька Cysic:${NC}"; read -r PRIVATE_KEY
-  echo -e "${YELLOW}Введите invite code от Cysic:${NC}"; read -r INVITE_CODE
-  if [ -z "$PRIVATE_KEY" ] || [ -z "$INVITE_CODE" ]; then
-    echo -e "${RED}Private key and invite code are required.${NC}"; return
-  fi
-  sudo touch "$CLAIMER_LOG"; sudo chmod 644 "$CLAIMER_LOG"
-
-  if command -v screen >/dev/null 2>&1; then
-    screen -S cysic-claimer -X quit >/dev/null 2>&1 || true
-    screen -S cysic-claimer -dm bash -lc "python3 '$CLAIMER_PY' --pk '$PRIVATE_KEY' --invite '$INVITE_CODE' >> '$CLAIMER_LOG' 2>&1"
-    sudo rm -f "$CLAIMER_PID" 2>/dev/null || true
-    echo -e "${GREEN}Claimer started in screen (logs: $CLAIMER_LOG).${NC}"
-    echo -e "${YELLOW}Attach: screen -r cysic-claimer  (detach: Ctrl+A, D)${NC}"
-  else
-    nohup python3 "$CLAIMER_PY" --pk "$PRIVATE_KEY" --invite "$INVITE_CODE" >> "$CLAIMER_LOG" 2>&1 &
-    echo $! | sudo tee "$CLAIMER_PID" >/dev/null
-    echo -e "${GREEN}Claimer started with nohup (PID $(cat $CLAIMER_PID)). Logs: $CLAIMER_LOG${NC}"
-  fi
-}
-
-function claimer_logs {
-  echo -e "${YELLOW}Claimer logs (CTRL+C to exit):${NC}"
-  [ -f "$CLAIMER_LOG" ] && tail -n 200 -f "$CLAIMER_LOG" || echo -e "${RED}No log file: $CLAIMER_LOG${NC}"
-}
-
-function stop_claimer {
-  echo -e "${BLUE}Stopping claimer...${NC}"
-  if screen -list 2>/dev/null | grep -q "cysic-claimer"; then
-    screen -S cysic-claimer -X quit || true
-    echo -e "${GREEN}Screen session stopped.${NC}"
-  fi
-  if [ -f "$CLAIMER_PID" ]; then
-    PID=$(cat "$CLAIMER_PID" || true)
-    if [ -n "${PID:-}" ] && ps -p "$PID" >/dev/null 2>&1; then
-      kill "$PID" || true; sleep 1
-      ps -p "$PID" >/dev/null 2>&1 && kill -9 "$PID" || true
-      echo -e "${GREEN}Process $PID stopped.${NC}"
-    fi
-    sudo rm -f "$CLAIMER_PID" 2>/dev/null || true
-  fi
-  pkill -f "$CLAIMER_PY" >/dev/null 2>&1 || true
-  echo -e "${GREEN}Done.${NC}"
-}
-
-# ===== Menus =====
-function menu_gum {
-  show_banner
-  export GUM_CHOOSE_HEADER="⚡ What do you want to do? (Use arrow keys)"
-  export GUM_CHOOSE_CURSOR="›"
-  export GUM_CHOOSE_CURSOR_PREFIX=" "
-  export GUM_CHOOSE_SELECTED_PREFIX="✔ "
-  export GUM_CHOOSE_UNSELECTED_PREFIX="  "
-  export GUM_CHOOSE_HEIGHT=12
-
-  CHOICE=$(gum choose \
-    "👉  Install Cysic node / Установка ноды" \
-    "🔁  Restart node / Рестарт ноды" \
-    "⬆️  Update node / Обновление ноды" \
-    "📜  View node logs / Просмотр логов ноды" \
-    "🗑️  Remove node / Удаление ноды" \
-    "🧰  Other nodes installer / Другие ноды" \
-    "⏹️  Stop node / Остановить ноду" \
-    "🚰  Start test-token claimer / Запустить клеймер" \
-    "🔎  View claimer logs / Логи клеймера" \
-    "🛑  Stop claimer / Остановить клеймер" \
-    "❌  Exit / Выход" )
-  echo "$CHOICE"
-}
-
-function menu_whiptail {
-  CHOICE=$(whiptail --title "CYSIC VERIFIER" --menu "What do you want to do? (Use arrow keys)" 20 78 12 \
-    "1" "Install Cysic node / Установка ноды" \
-    "2" "Restart node / Рестарт ноды" \
-    "3" "Update node / Обновление ноды" \
-    "4" "View node logs / Просмотр логов" \
-    "5" "Remove node / Удаление ноды" \
-    "6" "Other nodes installer / Другие ноды" \
-    "7" "Stop node / Остановить ноду" \
-    "8" "Start test-token claimer / Запустить клеймер" \
-    "9" "View claimer logs / Логи клеймера" \
-    "10" "Stop claimer / Остановить клеймер" \
-    "11" "Exit / Выход" \
-    3>&1 1>&2 2>&3) || true
-  echo "$CHOICE"
-}
-
-function main_menu {
-  ensure_base_packages
-  ensure_gum   # важно: ставим gum перед проверкой
-
-  while true; do
-    local choice
-    if command -v gum >/dev/null 2>&1; then
-      choice=$(menu_gum)
-      case "$choice" in
-        *"Install Cysic node"*)          install_node ;;
-        *"Restart node"*)                restart_node ;;
-        *"Update node"*)                 update_node ;;
-        *"View node logs"*)              view_logs ;;
-        *"Remove node"*)                 remove_node ;;
-        *"Other nodes"*)                 other_nodes ;;
-        *"Stop node"*)                   stop_node ;;
-        *"Start test-token claimer"*)    start_claimer ;;
-        *"View claimer logs"*)           claimer_logs ;;
-        *"Stop claimer"*)                stop_claimer ;;
-        *"Exit"*)                        break ;;
-        *) ;;
-      esac
-    elif command -v whiptail >/dev/null 2>&1; then
-      show_banner
-      choice=$(menu_whiptail)
-      case "$choice" in
-        1) install_node ;; 2) restart_node ;; 3) update_node ;; 4) view_logs ;;
-        5) remove_node ;; 6) other_nodes ;; 7) stop_node ;; 8) start_claimer ;;
-        9) claimer_logs ;; 10) stop_claimer ;; 11) break ;;
-        *) ;;
-      esac
-    else
-      show_banner
-      echo -e "${YELLOW}1) Install  2) Restart  3) Update  4) Logs  5) Remove  6) Other  7) Stop  8) Claimer  9) Claimer logs  10) Stop claimer  11) Exit${NC}"
-      read -p "> " choice
-      case "$choice" in
-        1) install_node ;; 2) restart_node ;; 3) update_node ;; 4) view_logs ;;
-        5) remove_node ;; 6) other_nodes ;; 7) stop_node ;; 8) start_claimer ;;
-        9) claimer_logs ;; 10) stop_claimer ;; 11) break ;;
-        *) ;;
-      esac
-    fi
-  done
-}
-
-main_menu
