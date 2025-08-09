@@ -155,7 +155,7 @@ You are solely responsible for the security of your private keys.
 💬 Telegram Chat: [@nod3r\_team](https://t.me/nod3r_team)
 📢 Telegram Channel: [@nod3r](https://t.me/nod3r)
 🤖 Bot: [@wiki\_nod3r\_bot](https://t.me/wiki_nod3r_bot)
-💻 GitHub: [ksydoruk1508/GensynNode](https://github.com/ksydoruk1508/GensynNode)
+💻 GitHub: [ksydoruk1508/GensynNode](https://github.com/ksydoruk1508/CysicNode)
 
 ---
 
