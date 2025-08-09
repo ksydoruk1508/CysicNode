@@ -1,5 +1,3 @@
----
-
 ````markdown
 # 🛠️ Cysic Verifier Node & Claimer Manager
 
