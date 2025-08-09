@@ -161,10 +161,7 @@ You are solely responsible for the security of your private keys.
 
 **If you have questions or issues — join our Telegram chat or open a GitHub Issue!**
 
-```
-
-
-
+---
 
 # 🛠️ Cysic Verifier Node & Claimer Manager
 
