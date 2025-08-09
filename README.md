@@ -155,3 +155,14 @@
 Вы несёте ответственность за безопасность приватных ключей.
 
 ---
+
+## Поддержка и контакты
+
+* Telegram-чат: [@nod3r\_team](https://t.me/nod3r_team)
+* Telegram-канал: [@nod3r](https://t.me/nod3r)
+* Бот: [@wiki\_nod3r\_bot](https://t.me/wiki_nod3r_bot)
+* GitHub: [ksydoruk1508/GensynNode](https://github.com/ksydoruk1508/GensynNode)
+
+---
+
+**Если возникли вопросы или проблемы — пишите в чат или Issues на GitHub!**
