@@ -144,22 +144,45 @@ from eth_account.messages import encode_defunct
 from datetime import datetime
 
 BASE_URL = "https://api-pre.prover.xyz"
-def now(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+def now() -> str:
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 def validate_private_key(pk: str) -> bool:
-    pk = pk.strip()
-    if pk.startswith('0x'): pk = pk[2:]
+    pk = (pk or "").strip()
+    if pk.startswith('0x'):
+        pk = pk[2:]
     return len(pk) == 64 and all(c in '0123456789abcdefABCDEF' for c in pk)
 
+def parse_cooldown_seconds(msg) -> int:
+    """
+    msg бывает:
+      - UNIX timestamp следующего разрешённого клейма
+      - число секунд до следующего клейма
+      - иное (тогда вернём 0)
+    """
+    try:
+        val = int(str(msg).strip())
+    except Exception:
+        return 0
+    now_ts = int(time.time())
+    # Похоже на timestamp в будущем
+    if val > now_ts + 60:
+        return max(0, val - now_ts)
+    # Иначе считаем это секундным интервалом
+    return max(0, val)
+
 class CysicClaimer:
-    def __init__(self, pk, invite):
-        self.pk = pk.strip(); self.invite = invite.strip()
+    def __init__(self, pk: str, invite: str):
+        self.pk = pk.strip()
+        self.invite = invite.strip()
         self.w3 = Web3()
         try:
             self.account = self.w3.eth.account.from_key(self.pk)
         except Exception as e:
-            sys.exit(f"Invalid private key: {e}")
+            sys.exit(f"Invalid private key / Некорректный приватный ключ: {e}")
         self.wallet = self.account.address
+
         self.s = requests.Session()
         self.s.headers.update({
             "User-Agent": "Mozilla/5.0",
@@ -168,51 +191,114 @@ class CysicClaimer:
             "Origin": "https://app.cysic.xyz",
             "Referer": "https://app.cysic.xyz/",
         })
+        self.timeout = 30
 
     def sign(self, text: str) -> str:
         return self.account.sign_message(encode_defunct(text=text)).signature.hex()
 
     def bind_invite(self) -> bool:
-        r = self.s.post(f"{BASE_URL}/api/v1/user/updateProfile",
-                        headers={"X-Cysic-Address": self.wallet, "X-Cysic-Sign": self.sign(f"Welcome to Cysic! Invite Code: {self.invite}")},
-                        json={"inviteCode": self.invite})
-        print(f"[{now()}] Bind invite: {r.status_code} {r.text[:200]}")
-        return r.status_code == 200
-
-    def claim(self) -> bool:
-        r = self.s.get(f"{BASE_URL}/api/v1/user/faucet",
-                       headers={"X-Cysic-Address": self.wallet, "X-Cysic-Sign": self.sign('Welcome to Cysic!')})
-        print(f"[{now()}] Claim: {r.status_code} {r.text[:200]}")
         try:
-            code = r.json().get("code")
-            return code in (0, 10099)
-        except Exception:
+            r = self.s.post(
+                f"{BASE_URL}/api/v1/user/updateProfile",
+                headers={
+                    "X-Cysic-Address": self.wallet,
+                    "X-Cysic-Sign": self.sign(f"Welcome to Cysic! Invite Code: {self.invite}")
+                },
+                json={"inviteCode": self.invite},
+                timeout=self.timeout
+            )
+            print(f"[{now()}] Bind invite / Привязка инвайта: {r.status_code} {r.text[:200]}")
+            return r.status_code == 200
+        except Exception as e:
+            print(f"[{now()}] Bind error / Ошибка привязки: {e}")
             return False
 
-    def cycle(self):
-        print("="*70)
-        print(f"[{now()}] Wallet: {self.wallet}")
-        ok = self.bind_invite() and self.claim()
-        print(f"[{now()}] {'✅ Success' if ok else '❌ Fail'}")
+    def claim(self) -> tuple[bool, int]:
+        """
+        Возвращает (success, wait_seconds).
+        success=True только при фактическом клейме (code == 0).
+        При code == 10099 (cooldown) вернём False и точную паузу от сервера.
+        """
+        try:
+            r = self.s.get(
+                f"{BASE_URL}/api/v1/user/faucet",
+                headers={
+                    "X-Cysic-Address": self.wallet,
+                    "X-Cysic-Sign": self.sign("Welcome to Cysic!")
+                },
+                timeout=self.timeout
+            )
+            print(f"[{now()}] Claim response / Ответ клейма: {r.status_code} {r.text[:200]}")
+        except Exception as e:
+            print(f"[{now()}] Claim request error / Ошибка запроса клейма: {e}")
+            return False, 300  # через 5 минут попробуем снова
+
+        # Разбор ответа
+        try:
+            data = r.json()
+        except Exception:
+            return False, 300
+
+        code = data.get("code")
+        msg  = data.get("msg")
+
+        if code == 0:
+            # Успешный клейм — спим ~24 часа + небольшой джиттер
+            base = 24 * 60 * 60
+            jitter = random.randint(60, 180)  # 1–3 минуты
+            print(f"[{now()}] ✅ Claimed successfully / Клейм успешен")
+            return True, base + jitter
+
+        if code == 10099:
+            # Уже клеймили — уважаем серверный таймер
+            wait = parse_cooldown_seconds(msg)
+            if wait == 0:
+                wait = 24 * 60 * 60
+            wait += random.randint(30, 90)  # небольшой джиттер
+            h, m = wait // 3600, (wait % 3600) // 60
+            print(f"[{now()}] ⏳ Cooldown: next allowed in ~{h}h {m}m / До следующего клейма ~{h}ч {m}м")
+            return False, wait
+
+        if code == 10199:
+            print(f"[{now()}] ❌ Authorization required / Требуется авторизация")
+            return False, 300
+
+        print(f"[{now()}] ℹ️ Unexpected code / Неожиданный код: {code}, msg={msg}")
+        return False, 300
 
 def main():
     ap = argparse.ArgumentParser(description="Cysic test token claimer (0.1/24h)")
-    ap.add_argument("--pk", required=True); ap.add_argument("--invite", required=True)
+    ap.add_argument("--pk", required=True, help="Private key (hex)")
+    ap.add_argument("--invite", required=True, help="Invite code")
     a = ap.parse_args()
-    if not validate_private_key(a.pk): sys.exit("Invalid PK format")
-    c = CysicClaimer(a.pk, a.invite)
+
+    if not validate_private_key(a.pk):
+        sys.exit("Invalid PK format / Неверный формат приватного ключа")
+
+    claimer = CysicClaimer(a.pk, a.invite)
+
     while True:
         try:
-            c.cycle()
-            m = random.randint(1441, 1445); s = m*60
-            print(f"[{now()}] Next in {m} min ({s} sec)")
-            time.sleep(s)
-        except KeyboardInterrupt:
-            print(f"[{now()}] Interrupted"); break
-        except Exception as e:
-            print(f"[{now()}] Unhandled: {e}"); time.sleep(30)
+            # Пробуем привязать инвайт — безопасно повторять / Safe to repeat
+            claimer.bind_invite()
 
-if __name__ == "__main__": main()
+            success, wait = claimer.claim()
+            if not success:
+                print(f"[{now()}] ℹ️ Not claimed this time / В этот раз клейма нет")
+
+            h, m, s = wait // 3600, (wait % 3600) // 60, wait % 60
+            print(f"[{now()}] Next attempt in {h:02d}:{m:02d}:{s:02d} ({wait} sec) / Следующая попытка через {h:02d}:{m:02d}:{s:02d} ({wait} сек)")
+            print("=" * 70)
+            time.sleep(wait)
+        except KeyboardInterrupt:
+            print(f"[{now()}] Interrupted / Остановлено пользователем")
+            break
+        except Exception as e:
+            print(f"[{now()}] Unhandled error / Необработанная ошибка: {e}")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    main()
 PYEOF
 }
 
