@@ -1,5 +1,173 @@
 # 🛠️ Cysic Verifier Node & Claimer Manager
 
+[![Made with Bash](https://img.shields.io/badge/Made%20with-Bash-1f425f.svg)](https://www.gnu.org/software/bash/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![OS](https://img.shields.io/badge/OS-Ubuntu%2020.04%2F22.04-orange)](https://ubuntu.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+🚀 This script automates the installation, updating, management, and monitoring of the **Cysic Verifier Node**  
+along with a built-in **test token claimer**.
+
+Supports a **bilingual interface (RU/EN)** and provides an interactive menu to control both the node and the claimer.
+
+---
+
+## 📌 Features
+
+✅ Install Cysic Node  
+🔄 Restart Node  
+⬆️ Update Node  
+📜 View Node Logs  
+🗑 Remove Node  
+🎯 Start Test Token Claimer  
+📜 View Claimer Logs  
+🛑 Stop Claimer  
+🌐 RU/EN Interface  
+⏳ Automatic 24h Claim Cooldown Handling  
+
+---
+
+## 📋 Requirements
+
+- **Ubuntu 20.04 / 22.04**
+- Python **3.10+**
+- Packages: `curl`, `git`, `screen`, `python3-pip`, `jq`, `unzip`
+- EVM wallet (**address & private key**)
+- Cysic invite code (for the claimer)
+
+---
+
+## 🚀 Installation
+
+```bash
+# 1. Connect to your server
+ssh user@your_server_ip
+
+# 2. Clone the repository
+git clone https://github.com/yourname/cysic-verifier-manager.git
+cd cysic-verifier-manager
+
+# 3. Make the script executable
+chmod +x cysic.sh
+
+# 4. Run it
+./cysic.sh
+```
+
+---
+
+## 📖 Usage
+
+When you start the script, you’ll see a menu:
+
+```
+1. Install Node
+2. Restart Node
+3. Update Node
+4. Node Logs
+5. Remove Node
+6. Start Claimer
+7. Claimer Logs
+8. Stop Claimer
+9. Exit
+```
+
+Choose actions by typing the number.
+
+---
+
+## ⚡ Claimer (claimer.py)
+
+* Automatically binds your invite code
+* Claims tokens every **24 hours**
+* Respects cooldown if a claim was already made
+* Runs inside a `screen` session (`cysic-claimer`)
+
+**Start from menu:**
+
+1. Enter your EVM wallet private key
+2. Enter your invite code
+3. Runs in background automatically
+
+---
+
+## 📜 Logs
+
+* **Node logs**
+
+  ```bash
+  ./cysic.sh → Node Logs
+  ```
+
+  or manually:
+
+  ```bash
+  screen -r cysic
+  ```
+
+* **Claimer logs**
+
+  ```bash
+  ./cysic.sh → Claimer Logs
+  ```
+
+  or manually:
+
+  ```bash
+  screen -r cysic-claimer
+  ```
+
+---
+
+## 🛑 Stop
+
+* **Node**
+
+  ```bash
+  ./cysic.sh → Stop Node
+  ```
+* **Claimer**
+
+  ```bash
+  ./cysic.sh → Stop Claimer
+  ```
+
+---
+
+## 🖤 Authors
+
+* Script & Menu: [ksydoruk1508](https://github.com/ksydoruk1508)
+* Updated Claimer with Auto-Timer: ChatGPT + [ksydoruk1508](https://github.com/ksydoruk1508)
+* Cysic Project: [app.cysic.xyz](https://app.cysic.xyz)
+
+---
+
+## ⚠️ Disclaimer
+
+This script is provided **"as is"**.
+Use at your own risk.
+You are solely responsible for the security of your private keys.
+
+---
+
+## 📬 Support & Contacts
+
+💬 Telegram Chat: [@nod3r\_team](https://t.me/nod3r_team)
+📢 Telegram Channel: [@nod3r](https://t.me/nod3r)
+🤖 Bot: [@wiki\_nod3r\_bot](https://t.me/wiki_nod3r_bot)
+💻 GitHub: [ksydoruk1508/GensynNode](https://github.com/ksydoruk1508/GensynNode)
+
+---
+
+**If you have questions or issues — join our Telegram chat or open a GitHub Issue!**
+
+```
+
+
+
+
+# 🛠️ Cysic Verifier Node & Claimer Manager
+
 Этот скрипт автоматизирует установку, обновление, управление и мониторинг **Cysic Verifier Node** и встроенного **тест-токен клеймера**.  
 Поддерживает двухъязычный интерфейс (RU/EN) и удобное меню для управления нодой и клеймером.
 
